@@ -95,6 +95,10 @@ func (h *Handler) requiredHistoryCount() int {
 }
 
 func (h *Handler) getIdealTxPowerIndexAndDR(nStep, txPowerIndex, dr, maxTxPowerIndex, maxDR int) (int, int) {
+	if txPowerIndex == 0 {
+		txPowerIndex = 1
+	}
+
 	if nStep == 0 {
 		return txPowerIndex, dr
 	}
