@@ -5,21 +5,21 @@ compile_alitecs-adr:
         - master
     stage: build
     script:
-        - cd alitecs-adr
+        - cd v3/alitecs-adr
         - env GOOS=linux GOARCH=amd64 go build
     artifacts:
         name: binary
         paths:
-        - alitecs-adr/alitecs-adr
+        - v3/alitecs-adr/alitecs-adr
 
 compile_alitecs-rn2483-adr:
     only:
         - master
     stage: build
     script:
-        - cd alitecs-rn2483-adr
+        - cd v3/alitecs-rn2483-adr
         - env GOOS=linux GOARCH=amd64 go build
     artifacts:
         name: binary
         paths:
-        - alitecs-rn2483-adr/alitecs-rn2483-adr
+        - v3/alitecs-rn2483-adr/alitecs-rn2483-adr
