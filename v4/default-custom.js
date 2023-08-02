@@ -1,6 +1,6 @@
 // This must return the name of the ADR algorithm.
 export function name() {
-    return "Default ADR algorithm (LoRa only)";
+    return "Default ADR algorithm (LoRa only) custom";
 }
 
 // This must return the id of the ADR algorithm.
