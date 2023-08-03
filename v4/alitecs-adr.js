@@ -166,11 +166,12 @@ function getPacketLossPercentage(req) {
 
     let lostPackets = 0;
     let previousFCnt = 0;
-    let i = 0;
+    let first = true;
 
     for (const uh of req.uplinkHistory) {
-        if (i === 0) {
+        if (first) {
             previousFCnt = uh.fCnt;
+            first = false;
             continue;
         }
 
