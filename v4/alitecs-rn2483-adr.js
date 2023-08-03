@@ -83,14 +83,6 @@ export function handle(req) {
     return resp;
 }
 
-function pktLossRateTable() {
-    return [[1, 1, 2],
-    [1, 2, 3],
-    [2, 3, 3],
-    [3, 3, 3]
-    ];
-}
-
 function getMaxSNR(req) {
     let snrM = -999;
 
@@ -105,15 +97,7 @@ function getMaxSNR(req) {
 
 // getHistoryCount returns the history count with equal TxPowerIndex.
 function getHistoryCount(req) {
-    let count = 0;
-
-    for (const uh of req.uplinkHistory) {
-        if (req.txPowerIndex === uh.txPowerIndex) {
-            count++;
-        }
-    }
-
-    return count;
+    return req.uplinkHistory.filter((x) => x.txPowerIndex === req.txPowerIndex).length;
 }
 
 function requiredHistoryCount() {
@@ -124,7 +108,7 @@ function getIdealTxPowerIndexAndDR(nStep, req) {
     if (req.txPowerIndex === 0) {
 		req.txPowerIndex = 1;
 	}
-    
+
     if (nStep === 0) {
         return {
             txPowerIndex: req.txPowerIndex,
@@ -158,6 +142,8 @@ function getIdealTxPowerIndexAndDR(nStep, req) {
 }
 
 function getNbTrans(currentNbTrans, pktLossRate) {
+    const pktLossRateTable = [[1, 1, 2], [1, 2, 3], [2, 3, 3], [3, 3, 3]];
+
     if (currentNbTrans < 1) {
         currentNbTrans = 1;
     }
@@ -167,14 +153,14 @@ function getNbTrans(currentNbTrans, pktLossRate) {
     }
 
     if (pktLossRate < 5) {
-        return pktLossRateTable()[0][currentNbTrans - 1];
+        return pktLossRateTable[0][currentNbTrans - 1];
     } else if (pktLossRate < 10) {
-        return pktLossRateTable()[1][currentNbTrans - 1];
+        return pktLossRateTable[1][currentNbTrans - 1];
     } else if (pktLossRate < 30) {
-        return pktLossRateTable()[2][currentNbTrans - 1];
+        return pktLossRateTable[2][currentNbTrans - 1];
     }
 
-    return pktLossRateTable()[3][currentNbTrans - 1];
+    return pktLossRateTable[3][currentNbTrans - 1];
 }
 
 function getPacketLossPercentage(req) {
