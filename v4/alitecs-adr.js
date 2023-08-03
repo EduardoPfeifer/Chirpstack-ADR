@@ -170,12 +170,12 @@ function getPacketLossPercentage(req) {
 
     for (const uh of req.uplinkHistory) {
         if (i === 0) {
-            previousFCnt = uh.FCnt;
+            previousFCnt = uh.fCnt;
             continue;
         }
 
-        lostPackets += uh.FCnt - previousFCnt - 1; // there is always an expected difference of 1
-        previousFCnt = uh.FCnt;
+        lostPackets += uh.fCnt - previousFCnt - 1; // there is always an expected difference of 1
+        previousFCnt = uh.fCnt;
     }
 
     return lostPackets / req.uplinkHistory.length * 100;
