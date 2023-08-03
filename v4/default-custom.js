@@ -8,173 +8,170 @@ export function id() {
     return "default-custom";
 }
 
+// This handles the ADR request.
+//
+// Input object example:
+// {
+//  regionName: "eu868",
+//  regionCommonName: "EU868",
+//  devEui: "0102030405060708",
+//  macVersion: "1.0.3",
+//  regParamsRevision: "A",
+//  adr: true,
+//  dr: 1,
+//  txPowerIndex: 0,
+//  nbTrans: 1,
+//  maxTxPowerIndex: 15,
+//  requiredSnrForDr: -17.5,
+//  installationMargin: 10,
+//  minDr: 0,
+//  maxDr: 5,
+//  uplinkHistory: [
+//    {
+//      "fCnt": 10,
+//      "maxSnr": 7.5,
+//      "maxRssi": -110,
+//      "txPowerIndex": 0,
+//      "gatewayCount": 3
+//    }
+//  ]
+// }
+//
+// This function must return an object, example:
+// {
+//  dr: 2,
+//  txPowerIndex: 1,
+//  nbTrans: 1
+// }
 export function handle(req) {
     let resp = {
         dr: req.dr,
-        tx_power_index: req.tx_power_index,
-        nb_trans: req.nb_trans,
-    };
+        txPowerIndex: req.txPowerIndex,
+        nbTrans: req.nbTrans
+    }
 
     // If ADR is disabled, return with current values.
     if (!req.adr) {
         return resp;
     }
 
-    // The max DR might be configured to a non LoRa (125kHz) data-rate.
-    // As this algorithm works on LoRa (125kHz) data-rates only, we need to
-    // find the max LoRa (125 kHz) data-rate.
-    const region_conf = region.get(req.region_config_id).context("Get region config for region");
-    let max_dr = req.max_dr;
-    let max_lora_dr = region_conf
-        .get_enabled_uplink_data_rates()
-        .filter((dr) => {
-            let dataRate = region_conf.get_data_rate(dr);
-            if (dataRate.modulation === "Lora") {
-                return dataRate.bandwidth === 125000;
-            }
-            return false;
-        })
-        .reduce((max, dr) => Math.max(max, dr), 0);
-
-    // Reduce to max LoRa DR.
-    if (max_dr > max_lora_dr) {
-        max_dr = max_lora_dr;
-    }
-
     // Lower the DR only if it exceeds the max. allowed DR.
-    if (req.dr > max_dr) {
-        resp.dr = max_dr;
+    if (resp.dr > req.maxDr) {
+        resp.dr = req.maxDr;
     }
 
-    // Set the new nb_trans;
-    resp.nb_trans = get_nb_trans(req.nb_trans, get_packet_loss_percentage(req));
+    // Set the new NbTrans.
+    resp.nbTrans = getNbTrans(req.nbTrans, getPacketLossPercentage(req));
 
-    // Calculate the number of steps.
-    let snr_max = get_max_snr(req);
-    let snr_margin = snr_max - req.required_snr_for_dr - req.installation_margin;
-    let n_step = Math.trunc(snr_margin / 3);
+    // Calculate the number of 'steps'.
+    let snrM = getMaxSNR(req);
+    let snrMargin = snrM - req.requiredSnrForDr - req.installationMargin;
+    let nStep = Math.trunc(snrMargin / 3);
 
-    // In case of negative steps, the ADR algorithm will increase the TxPower
+    // In case of negative steps the ADR algorithm will increase the TxPower
     // if possible. To avoid up / down / up / down TxPower changes, wait until
     // we have at least the required number of uplink history elements.
-    if (n_step < 0 && get_history_count(req) !== required_history_count()) {
+    if (nStep < 0 && getHistoryCount(req) < requiredHistoryCount()) {
         return resp;
     }
+        
+    let idealValues = getIdealTxPowerIndexAndDR(nStep, req);
 
-    let [desired_tx_power_index, desired_dr] = get_ideal_tx_power_index_and_dr(
-        n_step,
-        resp.tx_power_index,
-        resp.dr,
-        req.max_tx_power_index,
-        max_dr
-    );
-
-    resp.dr = desired_dr;
-    resp.tx_power_index = desired_tx_power_index;
+    resp.txPowerIndex = idealValues.txPowerIndex;
+    resp.dr = idealValues.dr;        
 
     return resp;
 }
 
-function get_ideal_tx_power_index_and_dr(
-    nb_step,
-    tx_power_index,
-    dr,
-    max_tx_power_index,
-    max_dr
-) {
-    if (nb_step === 0) {
-        return [tx_power_index, dr];
-    }
+function getMaxSNR(req) {
+    let snrM = -999;
 
-    if (nb_step > 0) {
-        if (dr < max_dr) {
-            // Increase the DR.
-            dr += 1;
-        } else if (tx_power_index < max_tx_power_index) {
-            // Decrease the tx-power.
-            // (note that an increase in index decreases the tx-power)
-            tx_power_index += 1;
+    for (const uh of req.uplinkHistory) {
+        if (uh.maxSnr > snrM) {
+            snrM = uh.maxSnr;
         }
-        nb_step -= 1;
-    } else {
-        // Increase the tx-power.
-        // (note that a decrease in index increases the tx-power)
-        // Subtract only if > 0
-        tx_power_index = Math.max(0, tx_power_index - 1);
-        nb_step += 1;
     }
 
-    return get_ideal_tx_power_index_and_dr(
-        nb_step,
-        tx_power_index,
-        dr,
-        max_tx_power_index,
-        max_dr
-    )
+    return snrM;
 }
 
-function required_history_count() {
+// getHistoryCount returns the history count with equal TxPowerIndex.
+function getHistoryCount(req) {
+    return req.uplinkHistory.filter((x) => x.txPowerIndex === req.txPowerIndex).length;
+}
+
+function requiredHistoryCount() {
     return 20;
 }
 
-function get_history_count(req) {
-    return req.uplink_history.filter((x) => x.tx_power_index === req.tx_power_index).length;
-}
+function getIdealTxPowerIndexAndDR(nStep, req) {
+    if (nStep === 0) {
+        return {
+            txPowerIndex: req.txPowerIndex,
+            dr: req.dr
+        };
+    }
 
-function get_max_snr(req) {
-    let max_snr = -999.0;
-
-    for (const uh of req.uplink_history) {
-        if (uh.max_snr > max_snr) {
-            max_snr = uh.max_snr;
+    if (nStep > 0) {
+        if (req.dr < req.maxDr) {
+            // Increase the DR.
+            req.dr++;
+        } else if (req.txPowerIndex < req.maxTxPowerIndex) {
+            // Decrease the TxPower.
+            req.txPowerIndex++;
         }
+        nStep--;
+    } else {
+        if (req.txPowerIndex > 0) {
+            // Increase the TxPower.
+            req.txPowerIndex--;
+        }
+        nStep++;
     }
 
-    return max_snr;
+    return getIdealTxPowerIndexAndDR(nStep, req);
 }
 
-function get_nb_trans(current_nb_trans, pkt_loss_rate) {
-    const pkt_loss_table = [[1, 1, 2], [1, 2, 3], [2, 3, 3], [3, 3, 3]];
+function getNbTrans(currentNbTrans, pktLossRate) {
+    const pktLossRateTable = [[1, 1, 2], [1, 2, 3], [2, 3, 3], [3, 3, 3]];
 
-    if (current_nb_trans < 1) {
-        current_nb_trans = 1;
+    if (currentNbTrans < 1) {
+        currentNbTrans = 1;
     }
 
-    if (current_nb_trans > 3) {
-        current_nb_trans = 3;
+    if (currentNbTrans > 3) {
+        currentNbTrans = 3
     }
 
-    const nb_trans_index = current_nb_trans - 1;
-    if (pkt_loss_rate < 5.0) {
-        return pkt_loss_table[0][nb_trans_index];
-    } else if (pkt_loss_rate < 10.0) {
-        return pkt_loss_table[1][nb_trans_index];
-    } else if (pkt_loss_rate < 30.0) {
-        return pkt_loss_table[2][nb_trans_index];
+    if (pktLossRate < 5) {
+        return pktLossRateTable[0][currentNbTrans - 1];
+    } else if (pktLossRate < 10) {
+        return pktLossRateTable[1][currentNbTrans - 1];
+    } else if (pktLossRate < 30) {
+        return pktLossRateTable[2][currentNbTrans - 1];
     }
 
-    return pkt_loss_table[3][nb_trans_index];
+    return pktLossRateTable[3][currentNbTrans - 1];
 }
 
-function get_packet_loss_percentage(req) {
-    if (req.uplink_history.length < required_history_count()) {
-        return 0.0;
+function getPacketLossPercentage(req) {
+    if (req.uplinkHistory.length < requiredHistoryCount()) {
+        return 0;
     }
 
-    let lost_packets = 0;
-    let previous_f_cnt = 0;
+    let lostPackets = 0;
+    let previousFCnt = 0;
+    let i = 0;
 
-    for (let i = 0; i < req.uplink_history.length; i++) {
-        const h = req.uplink_history[i];
-
+    for (const uh of req.uplinkHistory) {
         if (i === 0) {
-            previous_f_cnt = h.f_cnt;
+            previousFCnt = uh.FCnt;
             continue;
         }
 
-        lost_packets += h.f_cnt - previous_f_cnt - 1; // there is always an expected difference of 1
-        previous_f_cnt = h.f_cnt;
+        lostPackets += uh.FCnt - previousFCnt - 1; // there is always an expected difference of 1
+        previousFCnt = uh.FCnt;
     }
 
-    return (lost_packets / req.uplink_history.length) * 100.0;
+    return lostPackets / req.uplinkHistory.length * 100;
 }
