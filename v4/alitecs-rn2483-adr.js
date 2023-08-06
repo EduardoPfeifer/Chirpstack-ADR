@@ -56,8 +56,8 @@ export function handle(req) {
     }
 
     // Lower the DR only if it exceeds the max. allowed DR.
-    if (resp.dr > req.maxDr) {
-        resp.dr = req.maxDr;
+    if (resp.dr > (req.maxDr || req.maxRr)) {
+        resp.dr = (req.maxDr || req.maxRr);
     }
 
     // Set the new NbTrans.
@@ -117,7 +117,7 @@ function getIdealTxPowerIndexAndDR(nStep, req) {
     }
 
     if (nStep > 0) {
-        if (req.dr < req.maxDr) {
+        if (req.dr < (req.maxDr || req.maxRr)) {
             // Increase the DR.
             req.dr++;
         } else if (req.txPowerIndex < req.maxTxPowerIndex) {
